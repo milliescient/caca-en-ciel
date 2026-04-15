@@ -1,0 +1,22 @@
+[gd_scene load_steps=3 format=3 uid="uid://bblob001"]
+
+[ext_resource type="Script" path="res://scripts/terrain_blob.gd" id="1_blob"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_blob"]
+size = Vector2(6, 6)
+
+[node name="TerrainBlob" type="RigidBody2D"]
+collision_layer = 0
+collision_mask = 2
+mass = 0.5
+gravity_scale = 1.2
+linear_damp = 2.0
+contact_monitor = true
+max_contacts_reported = 4
+script = ExtResource("1_blob")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_blob")
+disabled = false

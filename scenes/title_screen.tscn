@@ -1,0 +1,74 @@
+[gd_scene load_steps=2 format=3 uid="uid://btitle001"]
+
+[ext_resource type="Script" path="res://scripts/title_screen.gd" id="1_title"]
+
+[node name="TitleScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_title")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.08, 0.06, 0.12, 1)
+
+[node name="Title" type="Sprite2D" parent="."]
+position = Vector2(320, 80)
+scale = Vector2(5, 5)
+texture_filter = 0
+
+[node name="Subtitle" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -160.0
+offset_top = 150.0
+offset_right = 160.0
+offset_bottom = 180.0
+theme_override_font_sizes/font_size = 10
+theme_override_colors/font_color = Color(0.92, 0.8, 0.76, 1)
+text = "poop out a world, one rainbow at a time"
+horizontal_alignment = 1
+
+[node name="CharPreview" type="Sprite2D" parent="."]
+position = Vector2(320, 220)
+scale = Vector2(6, 6)
+texture = null
+
+[node name="PressStart" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -120.0
+offset_top = 290.0
+offset_right = 120.0
+offset_bottom = 320.0
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.8, 0.9, 1.0, 1)
+text = "PRESS ANY KEY"
+horizontal_alignment = 1
+
+[node name="Controls" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -150.0
+offset_top = -40.0
+offset_right = 150.0
+offset_bottom = -10.0
+theme_override_font_sizes/font_size = 8
+theme_override_colors/font_color = Color(0.5, 0.5, 0.6, 1)
+text = "A/D: move  |  Enter: spray rainbow poop"
+horizontal_alignment = 1

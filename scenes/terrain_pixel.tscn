@@ -1,0 +1,27 @@
+[gd_scene load_steps=4 format=3 uid="uid://bpixel001"]
+
+[ext_resource type="Script" path="res://scripts/terrain_pixel.gd" id="1_pixel"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_pixel"]
+size = Vector2(3, 3)
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_pixel"]
+bounce = 0.0
+friction = 0.8
+
+[node name="TerrainPixel" type="RigidBody2D"]
+collision_layer = 4
+collision_mask = 6
+mass = 0.5
+physics_material_override = SubResource("PhysicsMaterial_pixel")
+gravity_scale = 0.184
+linear_damp = 1.5
+continuous_cd = 2
+contact_monitor = true
+max_contacts_reported = 2
+script = ExtResource("1_pixel")
+
+[node name="Sprite2D" type="Sprite2D" parent="."]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("RectangleShape2D_pixel")
