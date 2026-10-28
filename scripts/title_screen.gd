@@ -1,6 +1,6 @@
 extends Control
 
-const TITLE_TEXT := "RAINBOW TOTORO POOP"
+const TITLE_TEXT := "caca-en-ciel"
 
 @onready var blink_timer := 0.0
 @onready var show_text := true

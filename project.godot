@@ -6,7 +6,7 @@ config_version=5
 
 [application]
 
-config/name="Rainbow Totoro Poop"
+config/name="caca-en-ciel"
 run/main_scene="res://scenes/title_screen.tscn"
 config/features=PackedStringArray("4.3")
 
@@ -74,3 +74,4 @@ shoot={
 [rendering]
 
 textures/canvas_textures/default_texture_filter=0
+textures/vram_compression/import_etc2_astc=true
