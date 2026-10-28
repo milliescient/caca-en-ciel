@@ -11,7 +11,7 @@ const WHEEL_TORQUE := 2800.0
 const WHEEL_FRICTION := 0.85
 const WHEEL_DRAG := 3.0
 const WHEEL_AIR_DRAG := 0.3
-const MAX_WHEEL_SPEED := 1200.0
+const MAX_WHEEL_SPEED := 800.0
 const GROUND_DECEL := 400.0
 
 var facing_right := true
