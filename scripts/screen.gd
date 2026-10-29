@@ -6,7 +6,8 @@ extends Node
 # viewport and are drawn in three layers over one shared world, picked out by
 # visibility_layer: the backdrop and everything in front of the terrain at
 # BASE_SIZE, scaled up blocky, and the terrain between them at screen
-# resolution (terrain_canvas.gd)
+# resolution (terrain_canvas.gd). Zooming changes how many game pixels the
+# pixel-art layers hold, so a game pixel stays one pixel of theirs at any zoom
 
 const BASE_SIZE := Vector2i(640, 360)
 const LAYER_FRONT := 1  # the default layer
@@ -41,6 +42,7 @@ func _ready() -> void:
 func show_scene(path: String) -> void:
 	for child in world.get_children():
 		child.queue_free()
+	set_zoom(1.0)
 	world.add_child(load(path).instantiate())
 
 # Switch scenes, inside the Screen if there is one (scenes run on their own too)
@@ -51,8 +53,15 @@ static func go(tree: SceneTree, path: String) -> void:
 	else:
 		tree.change_scene_to_file(path)
 
+# Screen pixels per game pixel, relative to the window's own scaling
+func set_zoom(zoom: float) -> void:
+	world.size = (Vector2(BASE_SIZE) / zoom).round()
+	front.size = world.size
+
+# Mouse positions arrive in BASE_SIZE units; scenes get them in game pixels
 func _input(event: InputEvent) -> void:
-	world.push_input(event)
+	world.push_input(event.xformed_by(Transform2D.IDENTITY.scaled(
+		Vector2(world.size) / Vector2(BASE_SIZE))), true)
 
 func _viewport(layers: int, transparent: bool) -> SubViewport:
 	var vp := SubViewport.new()
@@ -76,6 +85,6 @@ func _fit_smooth() -> void:
 func _follow_camera() -> void:
 	var view := world.canvas_transform
 	front.canvas_transform = view
-	var scale := float(smooth.size.y) / BASE_SIZE.y
-	smooth.canvas_transform = Transform2D(0.0, Vector2(scale, scale), 0.0,
+	var scale := Vector2(smooth.size) / Vector2(world.size)
+	smooth.canvas_transform = Transform2D(0.0, scale, 0.0,
 		(view.origin + Vector2(0.5, 0.5)).floor() * scale)

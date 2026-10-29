@@ -16,6 +16,7 @@ offset_left = -10000.0
 offset_top = -10000.0
 offset_right = 10000.0
 offset_bottom = 10000.0
+mouse_filter = 2
 color = Color(0.08, 0.06, 0.14, 1)
 
 [node name="Stars" type="Node2D" parent="."]
