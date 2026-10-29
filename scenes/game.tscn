@@ -6,9 +6,11 @@
 [ext_resource type="Script" path="res://scripts/stars.gd" id="4_stars"]
 
 [node name="Game" type="Node2D"]
+visibility_layer = 7
 script = ExtResource("1_game")
 
 [node name="Background" type="ColorRect" parent="."]
+visibility_layer = 2
 z_index = -10
 offset_left = -10000.0
 offset_top = -10000.0
@@ -17,6 +19,7 @@ offset_bottom = 10000.0
 color = Color(0.08, 0.06, 0.14, 1)
 
 [node name="Stars" type="Node2D" parent="."]
+visibility_layer = 2
 z_index = -9
 script = ExtResource("4_stars")
 

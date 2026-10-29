@@ -11,7 +11,9 @@ func _ready() -> void:
 	player.get_node("CollisionShape2D").shape = player_shape
 
 	$Camera2D.target = player
+	# Cured poop draws here; added last so it sits where the poops themselves would
+	add_child(TerrainCanvas.new())
 
 func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
-		get_tree().change_scene_to_file("res://scenes/title_screen.tscn")
+		Screen.go(get_tree(), "res://scenes/title_screen.tscn")
