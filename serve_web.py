@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the exported web build of caca-en-ciel to the LAN over HTTPS.
+"""Serve the exported web build of tadoussac to the LAN over HTTPS.
 
 Godot's web export refuses to start outside a secure context, and the Web Audio
 worklet it needs is secure-context-only too, so plain http will not do. The cert
