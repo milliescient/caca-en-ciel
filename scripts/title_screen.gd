@@ -9,6 +9,18 @@ const CONTROLS_COLOR := Color(0.5, 0.5, 0.6)
 const UP_ARROW := ["..#..", ".###.", "#####", "..#..", "..#..", "..#.."]
 const POINTER := ["#....", "##...", "###..", "####.", "#####", "##...", "#.#..", "...#."]
 const ENTER := ["......#", "......#", "..#...#", ".##...#", "#######", ".##....", "..#...."]
+# The title fades in from TITLE_AT over TITLE_FADE, as the narwhal's spray
+# dies down, then after a beat the prompt and controls fade in quickly at
+# CONTROLS_AT
+const TITLE_AT := 1.0
+# The sunlight here, as a share of the game's, and how many times faster than
+# in the game plants sprout and grow
+const SUN := 0.6
+const PLANT_SPROUT_PACE := 30.0
+const PLANT_GROW_PACE := 4.0
+const TITLE_FADE := 1.2
+const CONTROLS_AT := 3.0
+const CONTROLS_FADE := 0.3
 
 @onready var title: Sprite2D = $Title
 @onready var prompt: Sprite2D = $PressStart
@@ -20,11 +32,31 @@ func _ready() -> void:
 	prompt.texture = TitleRenderer.render_text(PROMPT, PROMPT_COLOR)
 	_write_controls()
 	title.texture = TitleRenderer.render_title(TITLE_TEXT, 0.0)
+	_fade_in()
+	# The narwhal sprayed in poop above the title, under a gentler sun than in
+	# the game, with plants hurried along to show up while someone's looking
+	var canvas := TerrainCanvas.new()
+	canvas.sun = SUN
+	canvas.vegetation.sprout_pace = PLANT_SPROUT_PACE
+	canvas.vegetation.grow_pace = PLANT_GROW_PACE
+	add_child(canvas)
+	add_child(TitleSpray.new())
 
 func _process(delta: float) -> void:
 	# Update rainbow title
 	time += delta
 	title.texture = TitleRenderer.render_title(TITLE_TEXT, time)
+
+func _fade_in() -> void:
+	title.modulate.a = 0.0
+	prompt.modulate.a = 0.0
+	controls.modulate.a = 0.0
+	var tween := create_tween()
+	tween.tween_interval(TITLE_AT)
+	tween.tween_property(title, "modulate:a", 1.0, TITLE_FADE)
+	tween.tween_interval(CONTROLS_AT - TITLE_AT - TITLE_FADE)
+	tween.tween_property(prompt, "modulate:a", 1.0, CONTROLS_FADE)
+	tween.parallel().tween_property(controls, "modulate:a", 1.0, CONTROLS_FADE)
 
 func _input(event: InputEvent) -> void:
 	if event.is_pressed() and not event is InputEventMouseMotion:

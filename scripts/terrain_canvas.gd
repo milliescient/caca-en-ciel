@@ -187,6 +187,7 @@ var exposures := {}  # piece -> light reaching it, from the last sweep
 var material_ := ShaderMaterial.new()
 var color_material := ShaderMaterial.new()
 var vegetation := Vegetation.new()
+var sun := 1.0  # the sunlight reaching open sky, 0 to 1
 
 func _ready() -> void:
 	add_to_group("terrain_canvas")
@@ -342,7 +343,7 @@ func _light_column(x: int) -> void:
 	var column: Dictionary = columns[x]
 	var ys := column.keys()
 	ys.sort()
-	var light := 1.0
+	var light := sun
 	var seen := {}
 	var above := -OPEN_SKY
 	for y in ys:

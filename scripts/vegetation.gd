@@ -84,6 +84,10 @@ class Plant:
 	var shown := -1  # thresholds passed, as last drawn
 	var withering := false
 
+# How many times faster than above plants sprout and seed, and grow (the
+# title screen hurries them)
+var sprout_pace := 1.0
+var grow_pace := 1.0
 var plants := {}  # base pixel -> Plant
 var patches := {}  # SEED_CELL -> how many plants grow from it
 var chunks := {}  # Vector2i -> Node2D
@@ -112,9 +116,9 @@ func visit(p: Vector2i, piece: Node, light: float, room: int) -> void:
 		if light > SHADE or room < MIN_ROOM or plants.size() >= MAX_PLANTS:
 			return
 		var roll := randf()
-		if roll >= TerrainCanvas.SUN_SWEEP / SEED_TIME:
+		if roll >= TerrainCanvas.SUN_SWEEP * sprout_pace / SEED_TIME:
 			return
-		if (roll < TerrainCanvas.SUN_SWEEP / SPROUT_TIME or _seeded(p)) \
+		if (roll < TerrainCanvas.SUN_SWEEP * sprout_pace / SPROUT_TIME or _seeded(p)) \
 				and piece.curedness(TerrainPixel.clock()) >= CURED and _clear_around(p):
 			_sprout(p, piece, room)
 		return
@@ -170,7 +174,7 @@ func _sprout(p: Vector2i, piece: Node, room: int) -> void:
 	var plant := Plant.new()
 	plant.base = p
 	plant.piece = piece
-	plant.grow_time = randf_range(GROW_TIME.x, GROW_TIME.y)
+	plant.grow_time = randf_range(GROW_TIME.x, GROW_TIME.y) / grow_pace
 	plant.rate = 1.0 / plant.grow_time
 	# A gust reaches neighbours together, give or take
 	plant.phase = randf_range(-0.6, 0.6)

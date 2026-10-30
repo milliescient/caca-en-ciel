@@ -119,6 +119,9 @@ var shape_changes_due := 0.0
 var spread_ops := []  # [age since sticking, pixel, filled], replayed by the canvas
 var spread_turn := 0
 var spread_live := false  # no canvas to replay it: spreads itself
+# Spreading and wobbling never take the 3x3 square it stuck as, so pieces
+# packed edge to edge leave no gaps (the title screen's narwhal)
+var hold_core := false
 var spread_done := false
 var stick_time := 0.0
 var shade := 0.0  # slight per-piece variation
@@ -385,7 +388,7 @@ func _make_shape() -> void:
 
 # Called by the canvas when spread_ops[i] is due
 func replay_spread(i: int) -> void:
-	_set_shape_pixel(_turn(spread_ops[i][1]), spread_ops[i][2])
+	_reshape(_turn(spread_ops[i][1]), spread_ops[i][2])
 
 # Shape changes a stuck piece makes itself: spreading when there's no canvas to
 # replay it, drifting while pushed, and once set, wobbling as soft as it is
@@ -415,7 +418,7 @@ func _shape_tick(delta: float, cure: float) -> void:
 		if freeze and canvas:
 			set_physics_process(false)  # the canvas ticks it from here
 	for op in ops:
-		_set_shape_pixel(op[0], op[1])
+		_reshape(op[0], op[1])
 
 # Whether the shape has finished spreading, so it may wobble or evaporate. A
 # replayed spread is done once its last change is due
@@ -457,6 +460,14 @@ func _turn(px: Vector2i) -> Vector2i:
 	if spread_turn & 4:
 		d = Vector2i(d.y, d.x)
 	return Vector2i(mid, mid) + d
+
+# A change of shape from spreading or wobbling, which may not empty the core
+# (see hold_core). _drift has already taken the pixel out of shape_pixels
+func _reshape(px: Vector2i, filled: bool) -> void:
+	if not filled and hold_core and maxi(absi(px.x - SHAPE_GRID / 2), absi(px.y - SHAPE_GRID / 2)) <= 1:
+		shape_pixels[px] = true
+		return
+	_set_shape_pixel(px, filled)
 
 func _set_shape_pixel(px: Vector2i, filled: bool) -> void:
 	if filled:
