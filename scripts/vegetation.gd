@@ -3,7 +3,7 @@ extends Node2D
 
 # Tiny plants on secluded poop. A pixel of fully cured poop with open air above
 # it and little sunlight reaching it (under an overhang, say) now and then
-# sprouts a grass tuft, a sprig or a flower, which grows over a minute or so
+# sprouts a grass tuft, a sprig or a flower, which grows over half a minute or so
 # and sways in a gentle breeze. Sprouting on its own is rare, but plants seed
 # the shaded poop around them, so vegetation starts as a few patches that
 # spread. Let the sun back in or the poop soften and a plant withers away;
@@ -17,21 +17,21 @@ extends Node2D
 # within seconds of curing, while a small nook waits a minute or two. One near
 # other plants (in the same or a neighbouring SEED_CELL) is seeded by them once
 # in about SEED_TIME
-const SPROUT_TIME := 6000.0
-const SEED_TIME := 2400.0
+const SPROUT_TIME := 2000.0
+const SEED_TIME := 600.0
 const SEED_CELL := 8
 # Thrives on poop at least this cured, in no more than this much light; withers
 # at a little below and above, holding still in between
 const CURED := 0.9
 const SHADE := 0.25
 const WITHER_SLACK := Vector2(0.1, 0.15)  # curedness below, light above
-const GROW_TIME := Vector2(40.0, 100.0)  # for a plant TALL pixels high; taller take longer
+const GROW_TIME := Vector2(20.0, 50.0)  # for a plant TALL pixels high; taller take longer
 # Most plants stay short and a few grow up to MAX_HEIGHT, room allowing: the
 # higher HEIGHT_SKEW, the fewer tall ones
 const MAX_HEIGHT := 14
 const HEIGHT_SKEW := 1.6
 const WITHER_TIME := 20.0
-const MAX_PLANTS := 1500
+const MAX_PLANTS := 3000
 const MIN_ROOM := 3  # open pixels above the surface needed to sprout
 const SPACING := 0  # no two plants this close, sideways or up and down
 const CHUNK := 64

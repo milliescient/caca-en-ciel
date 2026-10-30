@@ -16,8 +16,8 @@ const TITLE_AT := 1.0
 # The sunlight here, as a share of the game's, and how many times faster than
 # in the game plants sprout and grow
 const SUN := 0.6
-const PLANT_SPROUT_PACE := 30.0
-const PLANT_GROW_PACE := 4.0
+const PLANT_SPROUT_PACE := 10.0
+const PLANT_GROW_PACE := 2.0
 const TITLE_FADE := 1.2
 const CONTROLS_AT := 3.0
 const CONTROLS_FADE := 0.3

@@ -60,10 +60,15 @@ const RESPONSE := Vector2(0.15, 0.4)
 const MAX_PUSH_SPEED := 144.0
 # Totoro can shove a piece that touches at most LOOSE_TOUCHING others; each
 # more cuts how much it gives by CLUMP_REDUCTION of what's left. A piece softer
-# than SHOVE_SOFTNESS also gives the more the softer it is, however clumped
+# than SHOVE_SOFTNESS also gives the more the softer it is, however clumped,
+# and one evaporated down gives the more the less is left of it. It's lighter
+# too: a last pixel has EVAPORATED_MASS of the mass and goes EVAPORATED_SPEED
+# times as fast at most, whatever pushes it
 const LOOSE_TOUCHING := 1
 const CLUMP_REDUCTION := 0.25
 const SHOVE_SOFTNESS := 0.5
+const EVAPORATED_MASS := 0.2
+const EVAPORATED_SPEED := 2.5
 # Tadoussac's horn breaks a piece loose whatever it touches, sends it off at
 # up to SCATTER_SPEED and takes SCATTER_SOFTEN of its curedness away
 const SCATTER_SPEED := 220.0
@@ -119,6 +124,7 @@ var shape_changes_due := 0.0
 var spread_ops := []  # [age since sticking, pixel, filled], replayed by the canvas
 var spread_turn := 0
 var spread_live := false  # no canvas to replay it: spreads itself
+var full_size := 0  # pixels when it started evaporating, or 0 before then
 # Spreading and wobbling never take the 3x3 square it stuck as, so pieces
 # packed edge to edge leave no gaps (the title screen's narwhal)
 var hold_core := false
@@ -274,7 +280,7 @@ func shove(impulse: Vector2) -> void:
 	var touching := canvas.touching(self) if canvas else 0
 	var loose := pow(1.0 - CLUMP_REDUCTION, maxi(touching - LOOSE_TOUCHING, 0))
 	var soft := inverse_lerp(SHOVE_SOFTNESS, 1.0, 1.0 - curedness(clock()))
-	var give := clampf(maxf(loose, soft), 0.0, 1.0)
+	var give := clampf(maxf(maxf(loose, soft), _evaporated()), 0.0, 1.0)
 	if give > 0.01:
 		nudge(impulse * give)
 
@@ -302,8 +308,9 @@ func _fling(velocity: Vector2) -> void:
 # The softer the piece, the more of the push it takes
 func _push(impulse: Vector2) -> void:
 	var response := lerpf(RESPONSE.y, RESPONSE.x, curedness(clock()))
-	mass = base_mass / response
-	max_speed = MAX_PUSH_SPEED * response
+	var gone := _evaporated()
+	mass = base_mass / response * lerpf(1.0, EVAPORATED_MASS, gone)
+	max_speed = MAX_PUSH_SPEED * response * lerpf(1.0, EVAPORATED_SPEED, gone)
 	freeze = false
 	set_physics_process(true)
 	apply_central_impulse(impulse)
@@ -427,11 +434,19 @@ func _shape_settled() -> bool:
 		spread_done = true
 	return spread_done
 
+# How far it has evaporated: 0 not at all, to 1 down to its last pixel
+func _evaporated() -> float:
+	if full_size <= 1:
+		return 0.0
+	return 1.0 - float(shape_pixels.size() - 1) / (full_size - 1)
+
 # Called by the canvas: sunlight takes this pixel away. A pixel holding the
 # shape together stays for now
 func evaporate(px: Vector2i) -> void:
 	if not _shape_settled() or not shape_pixels.has(px):
 		return
+	if full_size == 0:
+		full_size = shape_pixels.size()
 	if shape_pixels.size() == 1:
 		# Off the canvas for good: it's not ticked again, so it can't ooze back
 		# on before it's freed
