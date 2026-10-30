@@ -4,9 +4,10 @@ extends Node
 # The game is pixel art at BASE_SIZE, except cured poop, which smooths out as it
 # cures and so needs the screen's real resolution. Scenes run in a BASE_SIZE
 # viewport and are drawn in three layers over one shared world, picked out by
-# visibility_layer: the backdrop and everything in front of the terrain at
-# BASE_SIZE, scaled up blocky, and the terrain between them at screen
-# resolution (terrain_canvas.gd). Zooming changes how many game pixels the
+# visibility_layer: the backdrop with Totoro and the poop flying out behind
+# him, and anything in front of the terrain, at BASE_SIZE, scaled up blocky, and
+# the terrain between them at screen resolution (terrain_canvas.gd), so poop
+# hides Totoro once it sticks. Zooming changes how many game pixels the
 # pixel-art layers hold, so a game pixel stays one pixel of theirs at any zoom.
 # A hidden fourth layer holds the terrain's colours, one per game pixel, for
 # the smooth layer to blend

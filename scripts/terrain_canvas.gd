@@ -10,7 +10,9 @@ extends Node2D
 # (TerrainPixel.ABSORBANCE), so the top of a pile takes it full on and what's
 # below gets less and less. A sweep every SUN_SWEEP seconds works out the light
 # reaching each piece and evaporates sunlit pixels now and then, and pieces
-# that are lit or still curing are kept up to date (TerrainPixel.tick)
+# that are lit or still curing are kept up to date (TerrainPixel.tick). The
+# sweep also shows the vegetation (vegetation.gd) the shaded surfaces it might
+# grow on
 
 # What both shaders share: the uniforms, and working out a pixel's colour
 const SHADER_COMMON := """
@@ -165,9 +167,11 @@ const APRON := 2
 const CELL := 16
 const MAX_PIECE := 9
 const SUN_SWEEP := 1.0
-# Light too faint to matter, and not followed further down: a piece in it
-# cures almost fully
+# Light too faint to matter: a piece in it cures almost fully, and nothing in
+# it evaporates
 const DARK := 0.1
+# Open space above the top of a column, as far as plants are concerned
+const OPEN_SKY := 1 << 20
 
 var chunks := {}  # Vector2i -> {image, texture}
 var cells := {}   # Vector2i -> Array of pieces
@@ -182,9 +186,11 @@ var ticking := []  # tracked pieces still to tick this round
 var exposures := {}  # piece -> light reaching it, from the last sweep
 var material_ := ShaderMaterial.new()
 var color_material := ShaderMaterial.new()
+var vegetation := Vegetation.new()
 
 func _ready() -> void:
 	add_to_group("terrain_canvas")
+	add_child(vegetation)
 	visibility_layer = Screen.LAYER_TERRAIN | Screen.LAYER_COLORS
 	material_.shader = Shader.new()
 	material_.shader.code = SHADER
@@ -257,8 +263,9 @@ func move_piece(piece: Node, to: Vector2i) -> void:
 		if columns.get(p.x, {}).get(p.y) != piece:
 			_paint(p, piece)
 
-# How many other pieces the piece touches, side by side
-func touching(piece: Node) -> int:
+# How many other pieces the piece touches, side by side, or as many as enough
+# if it touches at least that many (counting stops there)
+func touching(piece: Node, enough := -1) -> int:
 	var others := {}
 	for px in piece.shape_pixels:
 		var p: Vector2i = piece.grid_pos + px
@@ -266,6 +273,8 @@ func touching(piece: Node) -> int:
 			var owner = columns.get(p.x + step.x, {}).get(p.y + step.y)
 			if owner != null and owner != piece:
 				others[owner] = true
+				if others.size() == enough:
+					return enough
 	return others.size()
 
 # Whether moving the piece by this step would take it into another piece
@@ -326,28 +335,37 @@ func _sweep_sun(delta: float) -> void:
 		if columns.has(x):
 			_light_column(x)
 
-# Follow the light down a column, through each pixel in turn
+# Follow the light down a column, through each pixel in turn, showing the
+# vegetation each pixel with open air above
 func _light_column(x: int) -> void:
 	var column: Dictionary = columns[x]
 	var ys := column.keys()
 	ys.sort()
 	var light := 1.0
 	var seen := {}
+	var above := -OPEN_SKY
 	for y in ys:
-		var piece = column.get(y)
-		if piece == null:
-			continue  # evaporated just now
-		if not seen.has(piece):
-			seen[piece] = true
-			sweep_light[piece] = sweep_light.get(piece, 0.0) + light
-		if randf() < light * SUN_SWEEP / TerrainPixel.EVAPORATE_TIME:
-			piece.evaporate(Vector2i(x, y) - piece.grid_pos)
+		# In the dark only surfaces matter, so most pixels there are passed over
+		if light >= DARK or y - above > 1:
+			var piece = column.get(y)
+			if piece == null:
+				continue  # evaporated just now
+			if light >= DARK:
+				if not seen.has(piece):
+					seen[piece] = true
+					sweep_light[piece] = sweep_light.get(piece, 0.0) + light
+				if randf() < light * SUN_SWEEP / TerrainPixel.EVAPORATE_TIME:
+					piece.evaporate(Vector2i(x, y) - piece.grid_pos)
+					if column.get(y) != piece:
+						continue
+			if y - above > 1:
+				vegetation.visit(Vector2i(x, y), piece, light, y - above - 1)
+		above = y
 		light *= 1.0 - TerrainPixel.ABSORBANCE
-		if light < DARK:
-			break
 
 # A piece's exposure is the light reaching its top, averaged over its columns
 func _end_sweep() -> void:
+	vegetation.end_sweep()
 	exposures.clear()
 	for piece in sweep_light:
 		if is_instance_valid(piece):
@@ -420,7 +438,9 @@ func _paint(p: Vector2i, owner: Node) -> void:
 			image.set_pixelv(at + Vector2i(0, CHUNK + 2 * APRON), b)
 			dirty[key] = true
 
-# Keep track of which piece is drawn at each pixel, column by column
+# Keep track of which piece is drawn at each pixel, column by column. A pixel
+# emptying may leave a piece beside it detached, so those are ticked to see
+# (TerrainPixel.DETACHED_TOUCHING)
 func _track(p: Vector2i, owner: Node) -> void:
 	if owner:
 		if not columns.has(p.x):
@@ -430,6 +450,10 @@ func _track(p: Vector2i, owner: Node) -> void:
 		columns[p.x].erase(p.y)
 		if columns[p.x].is_empty():
 			columns.erase(p.x)
+		for step in TerrainPixel.NEIGHBOURS:
+			var beside = columns.get(p.x + step.x, {}).get(p.y + step.y)
+			if beside:
+				tracked[beside] = true
 
 func _chunk_key(p: Vector2i) -> Vector2i:
 	return Vector2i(floori(float(p.x) / CHUNK), floori(float(p.y) / CHUNK))

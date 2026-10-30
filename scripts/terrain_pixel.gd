@@ -35,9 +35,17 @@ const CURE_SHADE_POWER := 4.0
 const ABSORBANCE := 0.1
 const EXPOSURE_STEP := 0.05  # change in exposure worth repainting for
 # A wholly uncured stuck piece oozes OOZE_SPEED pixels a second, softer ones
-# in proportion, cured ones not at all. It moves on the canvas's pixel grid
-# rather than as a physics body, which keeps hundreds of oozing pieces cheap
+# in proportion, cured ones only if detached (below). It gets going from rest
+# at OOZE_ACCEL pixels a second each second, so a wholly uncured one is up to
+# speed in 4 seconds. It moves on the canvas's pixel grid rather than as a physics body,
+# which keeps hundreds of oozing pieces cheap
 const OOZE_SPEED := 3.0
+const OOZE_ACCEL := 0.75
+# However cured, a piece touching no more than DETACHED_TOUCHING others oozes
+# at DETACHED_OOZE times OOZE_SPEED at least, so a lone speck of cured poop
+# drifts down until it settles against something
+const DETACHED_TOUCHING := 0
+const DETACHED_OOZE := 0.7
 const SOFT_MIN := 0.01  # softness below which a piece is left alone
 # The canvas brings each soft stuck piece up to date STUCK_TICKS times a second
 const STUCK_TICKS := 2.0
@@ -92,6 +100,7 @@ var rainbow_phase := 0.0
 var stuck := false
 var base_mass := 0.0
 var ooze_due := 0.0
+var ooze_speed := 0.0
 var last_tick := 0.0
 var prev_velocity := Vector2.ZERO
 var shape_image: Image
@@ -268,7 +277,9 @@ func _push(impulse: Vector2) -> void:
 # with how much sunlight reaches it, 0 to 1. Returns whether that's still so
 func tick(light: float) -> bool:
 	var now := clock()
-	var delta := now - last_tick
+	# A piece woken after a spell unticked doesn't catch up on oozing it
+	# couldn't have done
+	var delta := minf(now - last_tick, 2.0 / STUCK_TICKS)
 	last_tick = now
 	if absf(light - exposure) >= EXPOSURE_STEP or (light == 0.0 and exposure > 0.0):
 		phase0 = fposmod(hue_phase(now), RAINBOW.size())
@@ -279,22 +290,33 @@ func tick(light: float) -> bool:
 		if canvas:
 			canvas.restamp(self)
 	var cure := curedness(now)
+	var detached := false
 	if freeze:
-		_ooze(delta, 1.0 - cure)
+		var ooziness := 1.0 - cure
+		if ooziness < DETACHED_OOZE and canvas \
+				and canvas.touching(self, DETACHED_TOUCHING + 1) <= DETACHED_TOUCHING:
+			detached = true
+			ooziness = DETACHED_OOZE
+		_ooze(delta, ooziness)
 		_shape_tick(delta, cure)
-	return cure < 1.0 - SOFT_MIN or exposure > 0.0
+	return cure < 1.0 - SOFT_MIN or exposure > 0.0 or detached
 
-# Creep down a pixel at a time as soft as the piece is, sliding off to either
-# side when straight down is taken
-func _ooze(delta: float, softness: float) -> void:
+# Creep down a pixel at a time, as fast as the piece is soft or detached (0 to
+# 1), sliding off to either side when straight down is taken
+func _ooze(delta: float, ooziness: float) -> void:
 	if not freeze or canvas == null:
 		return
-	ooze_due += delta * OOZE_SPEED * softness
+	# Speeding up toward the speed for its ooziness, or slowing to it at once
+	# as it cures, and covering the distance at the average of the two
+	var was := ooze_speed
+	ooze_speed = minf(ooze_speed + OOZE_ACCEL * delta, OOZE_SPEED * ooziness)
+	ooze_due += delta * (was + ooze_speed) * 0.5
 	while ooze_due >= 1.0:
 		ooze_due -= 1.0
 		var side := Vector2i(1 if randf() < 0.5 else -1, 1)
 		if not (_ooze_to(Vector2i.DOWN) or _ooze_to(side) or _ooze_to(Vector2i(-side.x, 1))):
 			ooze_due = -OOZE_WAIT
+			ooze_speed = 0.0  # at rest: it starts again from nothing
 
 # The canvas knows every stuck piece's pixels exactly, so it alone says what's
 # in the way. (Collision boxes are only a rough core of each piece.)
@@ -373,7 +395,11 @@ func evaporate(px: Vector2i) -> void:
 	if not _shape_settled() or not shape_pixels.has(px):
 		return
 	if shape_pixels.size() == 1:
+		# Off the canvas for good: it's not ticked again, so it can't ooze back
+		# on before it's freed
 		canvas.remove_piece(self)
+		canvas = null
+		set_physics_process(false)
 		queue_free()
 	elif _stays_connected_without(shape_pixels, px):
 		_set_shape_pixel(px, false)
