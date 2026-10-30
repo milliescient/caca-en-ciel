@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
+		<title>tadoussac</title>
+		<style>
+html, body, #canvas {
+	margin: 0;
+	padding: 0;
+	border: 0;
+}
+
+body {
+	color: white;
+	background-color: black;
+	overflow: hidden;
+	touch-action: none;
+}
+
+#canvas {
+	display: block;
+}
+
+#canvas:focus {
+	outline: none;
+}
+
+#status, #status-splash, #status-progress {
+	position: absolute;
+	left: 0;
+	right: 0;
+}
+
+#status, #status-splash {
+	top: 0;
+	bottom: 0;
+}
+
+#status {
+	background-color: #140f1f;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	visibility: hidden;
+}
+
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<style>#status-progress{-webkit-appearance:none;appearance:none;width:368px;height:8px;top:calc(50% - 4px);bottom:auto;border:0;border-radius:0;background:#2a2238}#status-progress::-webkit-progress-bar{background:#2a2238}#status-progress::-webkit-progress-value{background:linear-gradient(90deg,#ff7373,#ffb34d,#ffff66,#66ff80,#66bfff,#9973ff,#e673ff)}#status-progress::-moz-progress-bar{background:linear-gradient(90deg,#ff7373,#ffb34d,#ffff66,#66ff80,#66bfff,#9973ff,#e673ff)}</style><script>/* Pinches and scrolls zoom the game, never the page. Godot reads every wheel event as one whole notch, so trackpad streams are added up into notches first: 100 px of scrolling, or 10% of pinch, which arrives as ctrl+wheel or, in Safari, as gesture events */(()=>{let owed=0,scale=1;const notches=(e,n)=>{owed+=n;for(;Math.abs(owed)>=1;owed-=Math.sign(owed)){const w=new WheelEvent('wheel',{deltaY:Math.sign(owed)*100,clientX:e.clientX,clientY:e.clientY,bubbles:true,cancelable:true});w.counted=true;document.getElementById('canvas').dispatchEvent(w)}};window.addEventListener('wheel',e=>{if(e.counted)return;e.preventDefault();e.stopImmediatePropagation();const px=[1,33,400][e.deltaMode];notches(e,e.deltaY*px/(e.ctrlKey?10:100))},{capture:true,passive:false});document.addEventListener('gesturestart',e=>{e.preventDefault();scale=1});document.addEventListener('gesturechange',e=>{e.preventDefault();notches(e,-Math.log(e.scale/scale)/Math.log(1.1));scale=e.scale});document.addEventListener('gestureend',e=>e.preventDefault())})()</script><script>/* The favicon is one piece of poop, smoothed out as cured poop is, at random: it grows from a 3x3 square into a blob on a 9x9 grid as stuck poop spreads, and is coloured with the rainbow running round it, filling the icon. The engine sets its own icon once it starts, so this one is put back whenever that happens */(()=>{const R=[[1,.3,.3],[1,.6,.2],[1,1,.3],[.3,1,.4],[.3,.7,1],[.5,.3,1],[.8,.3,1]],N=64,S=.6;const k=(x,y)=>x+','+y,cells=new Map();for(let x=3;x<6;x++)for(let y=3;y<6;y++)cells.set(k(x,y),[x,y]);const n=14+Math.floor(Math.random()*9);while(cells.size<n){const rim=new Map();for(const[x,y]of cells.values())for(const[dx,dy]of[[1,0],[-1,0],[0,1],[0,-1]]){const c=[x+dx,y+dy];if(c[0]>=0&&c[0]<9&&c[1]>=0&&c[1]<9&&!cells.has(k(...c)))rim.set(k(...c),c)}let all=[],sum=0;for(const c of rim.values()){let w=0;for(let dx=-1;dx<2;dx++)for(let dy=-1;dy<2;dy++)w+=cells.has(k(c[0]+dx,c[1]+dy));sum+=w*w;all.push([c,sum])}const r=Math.random()*sum,c=all.find(a=>a[1]>r)[0];cells.set(k(...c),c)}const v=[...cells.values()],xs=v.map(c=>c[0]),ys=v.map(c=>c[1]),cx=(Math.min(...xs)+Math.max(...xs)+1)/2,cy=(Math.min(...ys)+Math.max(...ys)+1)/2,span=Math.max(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys))+2.2;const cv=document.createElement('canvas');cv.width=cv.height=N;const g=cv.getContext('2d'),img=g.createImageData(N,N);for(let py=0;py<N;py++)for(let px=0;px<N;px++){const gx=cx+((px+.5)/N-.5)*span,gy=cy+((py+.5)/N-.5)*span;let f=0;for(const[x,y]of v)f+=Math.exp(-((gx-x-.5)**2+(gy-y-.5)**2)/(2*S*S));const a=Math.max(0,Math.min(1,(f-.5)/.12+.5)),u=(Math.atan2(gy-cy,gx-cx)/(2*Math.PI)+1)%1*7,j=Math.floor(u),t=u-j,o=4*(py*N+px);for(let i=0;i<3;i++)img.data[o+i]=Math.round(255*(R[j][i]+(R[(j+1)%7][i]-R[j][i])*t));img.data[o+3]=Math.round(255*a)}g.putImageData(img,0,0);const mine=cv.toDataURL(),set=()=>{const l=document.getElementById('-gd-engine-icon');if(l&&l.getAttribute('href')!==mine)l.setAttribute('href',mine)};new MutationObserver(set).observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['href']});set()})()</script>
+	</head>
+	<body>
+		<canvas id="canvas">
+			Your browser does not support the canvas tag.
+		</canvas>
+
+		<noscript>
+			Your browser does not support JavaScript.
+		</noscript>
+
+		<div id="status">
+			<img id="status-splash" class="show-image--false fullsize--false use-filter--false" src="index.png" alt="">
+			<progress id="status-progress"></progress>
+			<div id="status-notice"></div>
+		</div>
+
+		<script src="index.js"></script>
+		<script>
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":531996,"index.wasm":37695054},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_THREADS_ENABLED = false;
+const engine = new Engine(GODOT_CONFIG);
+
+(function () {
+	const statusOverlay = document.getElementById('status');
+	const statusProgress = document.getElementById('status-progress');
+	const statusNotice = document.getElementById('status-notice');
+
+	let initializing = true;
+	let statusMode = '';
+
+	function setStatusMode(mode) {
+		if (statusMode === mode || !initializing) {
+			return;
+		}
+		if (mode === 'hidden') {
+			statusOverlay.remove();
+			initializing = false;
+			return;
+		}
+		statusOverlay.style.visibility = 'visible';
+		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
+		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
+		statusMode = mode;
+	}
+
+	function setStatusNotice(text) {
+		while (statusNotice.lastChild) {
+			statusNotice.removeChild(statusNotice.lastChild);
+		}
+		const lines = text.split('\n');
+		lines.forEach((line) => {
+			statusNotice.appendChild(document.createTextNode(line));
+			statusNotice.appendChild(document.createElement('br'));
+		});
+	}
+
+	function displayFailureNotice(err) {
+		console.error(err);
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
+		setStatusMode('notice');
+		initializing = false;
+	}
+
+	const missing = Engine.getMissingFeatures({
+		threads: GODOT_THREADS_ENABLED,
+	});
+
+	if (missing.length !== 0) {
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			// There's a chance that installing the service worker would fix the issue
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			// Display the message as usual
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
+	} else {
+		setStatusMode('progress');
+		engine.startGame({
+			'onProgress': function (current, total) {
+				if (current > 0 && total > 0) {
+					statusProgress.value = current;
+					statusProgress.max = total;
+				} else {
+					statusProgress.removeAttribute('value');
+					statusProgress.removeAttribute('max');
+				}
+			},
+		}).then(() => {
+			setStatusMode('hidden');
+		}, displayFailureNotice);
+	}
+}());
+		</script>
+	</body>
+</html>
+
