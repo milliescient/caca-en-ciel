@@ -64,6 +64,10 @@ const MAX_PUSH_SPEED := 144.0
 const LOOSE_TOUCHING := 1
 const CLUMP_REDUCTION := 0.25
 const SHOVE_SOFTNESS := 0.5
+# Tadoussac's horn breaks a piece loose whatever it touches, sends it off at
+# up to SCATTER_SPEED and takes SCATTER_SOFTEN of its curedness away
+const SCATTER_SPEED := 220.0
+const SCATTER_SOFTEN := 0.6
 # The shape spreads from the 3x3 square in the middle of this grid into an
 # amorphous blob of SPREAD_PIXELS pixels. Each shape change grows the blob by a
 # pixel or moves one around its rim
@@ -270,6 +274,27 @@ func shove(impulse: Vector2) -> void:
 	var give := clampf(maxf(loose, soft), 0.0, 1.0)
 	if give > 0.01:
 		nudge(impulse * give)
+
+# Struck by the horn: softened, then sent off at this velocity, clumped or not
+func scatter(velocity: Vector2) -> void:
+	if not stuck:
+		return
+	var now := clock()
+	phase0 = fposmod(hue_phase(now), RAINBOW.size())
+	cure0 = curedness(now) * (1.0 - SCATTER_SOFTEN)
+	since = now
+	_update_stamp()
+	if canvas:
+		canvas.restamp(self)
+		canvas.tracked[self] = true
+	_fling.call_deferred(velocity)
+
+func _fling(velocity: Vector2) -> void:
+	mass = base_mass / lerpf(RESPONSE.y, RESPONSE.x, curedness(clock()))
+	max_speed = SCATTER_SPEED
+	freeze = false
+	set_physics_process(true)
+	linear_velocity = velocity.limit_length(SCATTER_SPEED)
 
 # The softer the piece, the more of the push it takes
 func _push(impulse: Vector2) -> void:

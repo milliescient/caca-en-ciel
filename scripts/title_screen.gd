@@ -42,7 +42,7 @@ func _write_controls() -> void:
 	controls.add_image(_icon(ENTER))
 	controls.add_text(" : fait popo  |  ")
 	controls.add_image(up)
-	controls.add_text(" : l'évent  |  ")
+	controls.add_text(" : l'évent  |  espace : coup d'corne  |  ")
 	controls.add_image(_icon(POINTER))
 	controls.add_text(" : r'garde alentour")
 	controls.pop()

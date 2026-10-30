@@ -406,6 +406,10 @@ func _repaint(p: Vector2i, pieces: Array) -> void:
 			owner = other
 	_paint(p, owner)
 
+# Stuck pieces whose image overlaps the rect, in world pixels
+func pieces_in(rect: Rect2i) -> Array:
+	return _pieces_near(rect)
+
 # Pieces whose image overlaps the rect
 func _pieces_near(rect: Rect2i) -> Array:
 	var found := []

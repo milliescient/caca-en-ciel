@@ -37,7 +37,7 @@ script = ExtResource("2_player")
 visibility_layer = 2
 z_index = 1
 texture_filter = 1
-hframes = 10
+hframes = 13
 
 [node name="WheelSprite" type="Sprite2D" parent="Player"]
 visibility_layer = 2
