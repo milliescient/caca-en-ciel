@@ -2,9 +2,9 @@ class_name TerrainPixel
 extends RigidBody2D
 
 # A piece of rainbow poop. It leaves Totoro fully uncured and flies as a 3x3
-# square cycling through the rainbow, gravity pulling hard and drag slowing it,
-# until it sticks at STICK_TIME: it stops dead, rotation and all, and becomes
-# terrain, drawn by the terrain canvas.
+# square cycling through the rainbow, gravity pulling gently, as if under water,
+# and drag slowing it, until it sticks at STICK_TIME: it stops dead, rotation
+# and all, and becomes terrain, drawn by the terrain canvas.
 #
 # Sticking and curing are separate. Once stuck, a piece spreads like a drop
 # flattening on glass and goes from pixelated to smooth over SET_TIME, then
@@ -35,15 +35,18 @@ const CURE_SHADE_POWER := 4.0
 const ABSORBANCE := 0.1
 const EXPOSURE_STEP := 0.05  # change in exposure worth repainting for
 # A wholly uncured stuck piece oozes OOZE_SPEED pixels a second, softer ones
-# in proportion, cured ones only if detached (below). It gets going from rest
-# at OOZE_ACCEL pixels a second each second, so a wholly uncured one is up to
-# speed in 4 seconds. It moves on the canvas's pixel grid rather than as a physics body,
-# which keeps hundreds of oozing pieces cheap
+# in proportion down to OOZE_SOFTNESS soft, and harder ones only if detached
+# (below). It gets going from rest at OOZE_ACCEL pixels a second each second,
+# so a wholly uncured one is up to speed in 4 seconds. It moves on the canvas's
+# pixel grid rather than as a physics body, which keeps hundreds of oozing
+# pieces cheap
 const OOZE_SPEED := 3.0
+const OOZE_SOFTNESS := 0.2
 const OOZE_ACCEL := 0.75
-# However cured, a piece touching no more than DETACHED_TOUCHING others oozes
-# at DETACHED_OOZE times OOZE_SPEED at least, so a lone speck of cured poop
-# drifts down until it settles against something
+# However cured, a piece touching no more than DETACHED_TOUCHING others, even
+# at a corner, starts oozing at DETACHED_OOZE times OOZE_SPEED at least, so a
+# lone speck of cured poop drifts down. Once going it keeps on, as soft poop
+# does, until it comes to rest on something
 const DETACHED_TOUCHING := 0
 const DETACHED_OOZE := 0.7
 const SOFT_MIN := 0.01  # softness below which a piece is left alone
@@ -101,6 +104,7 @@ var stuck := false
 var base_mass := 0.0
 var ooze_due := 0.0
 var ooze_speed := 0.0
+var detached := false  # oozing for being detached (see DETACHED_TOUCHING)
 var last_tick := 0.0
 var prev_velocity := Vector2.ZERO
 var shape_image: Image
@@ -173,6 +177,9 @@ func hue_phase(t: float) -> float:
 func _ready() -> void:
 	rainbow_phase = randf() * RAINBOW.size()
 	_make_shape()
+	# Its colour from the first frame drawn, not just from the first step
+	sprite.modulate = RAINBOW[int(rainbow_phase) % RAINBOW.size()]
+	sprite.modulate.a = 0.8
 	spread_to = randi_range(SPREAD_PIXELS.x, SPREAD_PIXELS.y)
 	base_mass = mass
 	# Spin dies away at the same rate as speed while flying
@@ -290,12 +297,14 @@ func tick(light: float) -> bool:
 		if canvas:
 			canvas.restamp(self)
 	var cure := curedness(now)
-	var detached := false
 	if freeze:
 		var ooziness := 1.0 - cure
-		if ooziness < DETACHED_OOZE and canvas \
-				and canvas.touching(self, DETACHED_TOUCHING + 1) <= DETACHED_TOUCHING:
-			detached = true
+		if ooziness < OOZE_SOFTNESS:
+			ooziness = 0.0  # too cured to ooze for softness
+		if not detached:
+			detached = ooziness < DETACHED_OOZE and canvas != null \
+					and canvas.touching(self, DETACHED_TOUCHING + 1, true) <= DETACHED_TOUCHING
+		if detached:
 			ooziness = DETACHED_OOZE
 		_ooze(delta, ooziness)
 		_shape_tick(delta, cure)
@@ -317,6 +326,7 @@ func _ooze(delta: float, ooziness: float) -> void:
 		if not (_ooze_to(Vector2i.DOWN) or _ooze_to(side) or _ooze_to(Vector2i(-side.x, 1))):
 			ooze_due = -OOZE_WAIT
 			ooze_speed = 0.0  # at rest: it starts again from nothing
+			detached = false  # and only once properly detached again
 
 # The canvas knows every stuck piece's pixels exactly, so it alone says what's
 # in the way. (Collision boxes are only a rough core of each piece.)

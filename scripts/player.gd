@@ -1,9 +1,19 @@
 extends CharacterBody2D
 
-const GRAVITY := 180.0
-const MAX_FALL_SPEED := 250.0
+# Gravity is gentle and the water holds it back, so it sinks at no more than
+# GRAVITY / WATER_DRAG. A and D drive the wheel and W and S swim up and down,
+# speeding it up to SWIM_VERTICAL but never holding it back. The up and down
+# arrows spray that way, and each poop so sprayed pushes it the other way by
+# RECOIL; spraying downward holds it up against gravity too (see _spray)
+const GRAVITY := 30.0
+const WATER_DRAG := 0.67  # share of its speed the water takes each second
+const SWIM_VERTICAL := 60.0  # top speed swimming up or down
+const SWIM_ACCEL := 240.0
+const RECOIL := 0.5  # speed each aimed poop gives it
+const UPWARD_RECOIL := 0.6  # share of it that pushes up, spraying down
 const EMIT_RATE := 0.01
 const SPRAY_SPEED := 120.0
+const AIMED_SPRAY_SPEED := 210.0  # with the up and down arrows
 
 # Wheel physics
 const WHEEL_RADIUS := 4.0
@@ -19,7 +29,22 @@ const GROUND_DECEL := 400.0
 const SHOVE_MASS := 1.5
 const WEIGHT := 0.75
 
+# The narwhal's frames (tools/narwhal.py): 4 idle, then 6 swimming
+const IDLE_FRAMES := 4
+const SWIM_FRAMES := 6
+const IDLE_FPS := 4.0
+const SWIM_FPS := 12.0
+const SWIM_SPEED := 10.0  # moving at least this fast swims
+# The sprite, drawn facing left, is shifted this far to sit its body over the
+# capsule (the horn sticks out in front), mirrored when it faces right
+const SPRITE_SHIFT := Vector2(-6, -6)
+# Where the poop comes out, facing left: on its belly toward the tail, or for
+# spraying upward, its blowhole on top of its head
+const VENT := Vector2(4, 1)
+const BLOWHOLE := Vector2(-15, -11)
+
 var facing_right := true
+var anim_time := 0.0
 var emit_timer := 0.0
 var wheel_angular_vel := 0.0
 
@@ -28,24 +53,32 @@ var wheel_angular_vel := 0.0
 
 func _ready() -> void:
 	add_to_group("player")
+	_face()
 
 func _physics_process(delta: float) -> void:
+	var aim := _aim()
+	var pushing := aim != Vector2.ZERO
+	var swim := Input.get_axis("move_up", "move_down")
 	if not is_on_floor():
-		velocity.y += GRAVITY * delta
-		velocity.y = minf(velocity.y, MAX_FALL_SPEED)
+		var held_up := maxf(aim.normalized().y, 0.0)
+		velocity.y += GRAVITY * (1.0 - held_up) * delta
+	if swim and velocity.y * swim < SWIM_VERTICAL:
+		velocity.y = move_toward(velocity.y, swim * SWIM_VERTICAL, SWIM_ACCEL * delta)
+	if not is_on_floor():
+		velocity.y -= velocity.y * WATER_DRAG * delta
 
 	var input_dir := Input.get_axis("move_left", "move_right")
-
 	if input_dir:
+		facing_right = input_dir > 0
+		_face()
 		wheel_angular_vel += input_dir * WHEEL_TORQUE * delta
 		wheel_angular_vel = clampf(wheel_angular_vel, -MAX_WHEEL_SPEED, MAX_WHEEL_SPEED)
-		facing_right = input_dir > 0
-		body_sprite.flip_h = facing_right
 	else:
 		var drag := WHEEL_DRAG if is_on_floor() else WHEEL_AIR_DRAG
 		wheel_angular_vel = move_toward(wheel_angular_vel, 0, drag * abs(wheel_angular_vel) * delta + GROUND_DECEL * delta)
 
-	if is_on_floor():
+	# Spraying or swimming up leaves the wheel behind, even on the floor
+	if is_on_floor() and not pushing and swim >= 0.0:
 		var wheel_speed := wheel_angular_vel * WHEEL_RADIUS * deg_to_rad(1.0)
 		var floor_normal := get_floor_normal()
 		var floor_dir := Vector2(-floor_normal.y, floor_normal.x)
@@ -58,6 +91,7 @@ func _physics_process(delta: float) -> void:
 		velocity.x = lerpf(velocity.x, target_vx, 0.02)
 
 	wheel_sprite.rotation_degrees += wheel_angular_vel * delta
+	_animate(delta, input_dir or swim or pushing)
 
 	var vel_before := velocity
 	var pos_before := global_position
@@ -76,14 +110,46 @@ func _physics_process(delta: float) -> void:
 
 	_shove_poop(vel_before)
 
-	# Spray with Enter
-	if Input.is_action_pressed("shoot"):
+	if pushing or Input.is_action_pressed("shoot"):
 		emit_timer -= delta
 		if emit_timer <= 0.0:
 			emit_timer = EMIT_RATE
-			_emit_particle()
+			_spray(aim)
 	else:
 		emit_timer = 0.0
+
+# Which way the up and down arrows point, or nothing
+func _aim() -> Vector2:
+	return Vector2(0.0, Input.get_axis("aim_up", "aim_down"))
+
+# Spray the way the up and down arrows point, faster: up out of the blowhole,
+# or down from the belly, and push the narwhal the other way. Enter alone
+# sprays down from the belly with no push. The wheel kicks every spray
+# sideways
+func _spray(aim: Vector2) -> void:
+	if aim == Vector2.ZERO:
+		_emit_particle(VENT, PI * 0.5, SPRAY_SPEED, true)
+		return
+	var dir := aim.normalized()
+	if dir.y < -0.1:
+		_emit_particle(BLOWHOLE, dir.angle(), AIMED_SPRAY_SPEED, true)
+	else:
+		_emit_particle(VENT, dir.angle(), AIMED_SPRAY_SPEED, true)
+	var push := -dir * RECOIL
+	if push.y < 0.0:
+		push.y *= UPWARD_RECOIL
+	velocity += push
+
+func _face() -> void:
+	body_sprite.flip_h = facing_right
+	body_sprite.position = Vector2(-SPRITE_SHIFT.x if facing_right else SPRITE_SHIFT.x, SPRITE_SHIFT.y)
+
+func _animate(delta: float, swimming: bool) -> void:
+	anim_time += delta
+	if swimming or velocity.length() > SWIM_SPEED:
+		body_sprite.frame = IDLE_FRAMES + int(anim_time * SWIM_FPS) % SWIM_FRAMES
+	else:
+		body_sprite.frame = int(anim_time * IDLE_FPS) % IDLE_FRAMES
 
 # Push on the poop he ran into and the poop he's standing on. Soft poop gives
 # way, so he ploughs through it and sinks into it
@@ -99,17 +165,18 @@ func _shove_poop(vel: Vector2) -> void:
 		if below and below.get_collider().has_method("shove"):
 			below.get_collider().shove(Vector2.DOWN * WEIGHT)
 
-func _emit_particle() -> void:
-	var emit_pos := global_position + Vector2(0, 4)
+# Spray a poop from this spot (as if facing left) at this angle and speed,
+# give or take, kicked sideways by the wheel or not
+func _emit_particle(from: Vector2, aim: float, spray_speed: float, kicked: bool) -> void:
+	var emit_pos := global_position + Vector2(-from.x if facing_right else from.x, from.y)
 
-	# Always spray downward
 	var spread_rad := deg_to_rad(10.0)
-	var angle := PI * 0.5 + randf_range(-spread_rad, spread_rad)  # PI/2 = straight down
+	var angle := aim + randf_range(-spread_rad, spread_rad)  # PI/2 = straight down
 	var spray_dir := Vector2.from_angle(angle)
-	var speed := randf_range(SPRAY_SPEED * 0.8, SPRAY_SPEED * 1.2)
+	var speed := randf_range(spray_speed * 0.8, spray_speed * 1.2)
 
 	# Wheel friction kicks particles sideways
-	var wheel_kick := -wheel_angular_vel * WHEEL_RADIUS * deg_to_rad(1.0) * 2.5
+	var wheel_kick := -wheel_angular_vel * WHEEL_RADIUS * deg_to_rad(1.0) * 2.5 if kicked else 0.0
 
 	# Inherit horizontal velocity fully, but for vertical:
 	# add spray burst ON TOP of player velocity so particles always go beneath

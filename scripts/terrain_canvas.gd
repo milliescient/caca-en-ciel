@@ -263,13 +263,14 @@ func move_piece(piece: Node, to: Vector2i) -> void:
 		if columns.get(p.x, {}).get(p.y) != piece:
 			_paint(p, piece)
 
-# How many other pieces the piece touches, side by side, or as many as enough
-# if it touches at least that many (counting stops there)
-func touching(piece: Node, enough := -1) -> int:
+# How many other pieces the piece touches, side by side (or corner to corner
+# too, with corners), or as many as enough if it touches at least that many
+# (counting stops there)
+func touching(piece: Node, enough := -1, corners := false) -> int:
 	var others := {}
 	for px in piece.shape_pixels:
 		var p: Vector2i = piece.grid_pos + px
-		for step in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
+		for step in (TerrainPixel.RING if corners else TerrainPixel.NEIGHBOURS):
 			var owner = columns.get(p.x + step.x, {}).get(p.y + step.y)
 			if owner != null and owner != piece:
 				others[owner] = true

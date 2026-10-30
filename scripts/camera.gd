@@ -1,7 +1,7 @@
 extends Camera2D
 
 # Follows the target until dragged away with the mouse. Scroll or pinch zooms,
-# and spraying (Enter) glides back to the target and to 1x zoom
+# and spraying (Enter, up or down) glides back to the target and to 1x zoom
 
 const MIN_ZOOM := 0.5
 const MAX_ZOOM := 4.0
@@ -39,7 +39,8 @@ func _physics_process(delta: float) -> void:
 			recentering = false
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("shoot"):
+	if event.is_action_pressed("shoot") or event.is_action_pressed("aim_up") \
+			or event.is_action_pressed("aim_down"):
 		recentering = not following
 		unzooming = zoom_level != 1.0
 	elif event is InputEventMouseButton:

@@ -13,11 +13,12 @@ extends Node2D
 # of its plants grows a pixel, and the swaying is all in the shader
 
 # Each shaded, cured surface pixel sprouts on its own once in about
-# SPROUT_TIME seconds: a big pile has thousands, so gets a plant every few
-# seconds, while a small nook waits minutes. One near other plants (in the same
-# or a neighbouring SEED_CELL) is seeded by them once in about SEED_TIME
-const SPROUT_TIME := 20000.0
-const SEED_TIME := 900.0
+# SPROUT_TIME seconds: a big pile has thousands, so gets its first plants
+# within seconds of curing, while a small nook waits a minute or two. One near
+# other plants (in the same or a neighbouring SEED_CELL) is seeded by them once
+# in about SEED_TIME
+const SPROUT_TIME := 6000.0
+const SEED_TIME := 2400.0
 const SEED_CELL := 8
 # Thrives on poop at least this cured, in no more than this much light; withers
 # at a little below and above, holding still in between
@@ -30,9 +31,9 @@ const GROW_TIME := Vector2(40.0, 100.0)  # for a plant TALL pixels high; taller 
 const MAX_HEIGHT := 14
 const HEIGHT_SKEW := 1.6
 const WITHER_TIME := 20.0
-const MAX_PLANTS := 800
+const MAX_PLANTS := 1500
 const MIN_ROOM := 3  # open pixels above the surface needed to sprout
-const SPACING := 1  # no two plants this close, sideways or up and down
+const SPACING := 0  # no two plants this close, sideways or up and down
 const CHUNK := 64
 # The breeze: the tip of a plant TALL pixels high sways SWAY pixels each way,
 # shorter ones less and taller ones more, with the square root of their height,
