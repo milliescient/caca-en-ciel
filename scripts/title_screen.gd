@@ -1,6 +1,6 @@
 extends Control
 
-const TITLE_TEXT := "caca-en-ciel"
+const TITLE_TEXT := "tadoussac"
 const PROMPT := "pèse sur une touche"
 const PROMPT_COLOR := Color(0.8, 0.9, 1.0)
 const CONTROLS_COLOR := Color(0.5, 0.5, 0.6)
