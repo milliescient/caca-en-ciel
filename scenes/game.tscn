@@ -6,7 +6,7 @@
 [ext_resource type="Script" path="res://scripts/stars.gd" id="4_stars"]
 
 [node name="Game" type="Node2D"]
-visibility_layer = 7
+visibility_layer = 15
 script = ExtResource("1_game")
 
 [node name="Background" type="ColorRect" parent="."]

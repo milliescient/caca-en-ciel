@@ -7,24 +7,33 @@ extends Node
 # visibility_layer: the backdrop and everything in front of the terrain at
 # BASE_SIZE, scaled up blocky, and the terrain between them at screen
 # resolution (terrain_canvas.gd). Zooming changes how many game pixels the
-# pixel-art layers hold, so a game pixel stays one pixel of theirs at any zoom
+# pixel-art layers hold, so a game pixel stays one pixel of theirs at any zoom.
+# A hidden fourth layer holds the terrain's colours, one per game pixel, for
+# the smooth layer to blend
 
 const BASE_SIZE := Vector2i(640, 360)
 const LAYER_FRONT := 1  # the default layer
 const LAYER_BACK := 2
 const LAYER_TERRAIN := 4
+const LAYER_COLORS := 8
+# The colour layer reaches this many game pixels past the screen's edges, as
+# far as the smooth layer's blending looks
+const COLOR_MARGIN := 4
 # Beyond this many screen pixels per game pixel the smooth layer is scaled up
 # instead, to keep its shader's work down on big screens
 const MAX_SMOOTH_SCALE := 4
 
 var world := _viewport(LAYER_BACK, false)
+var colors := _viewport(LAYER_COLORS, true)
 var smooth := _viewport(LAYER_TERRAIN, true)
 var front := _viewport(LAYER_FRONT, true)
 
 func _ready() -> void:
 	smooth.world_2d = world.world_2d
 	front.world_2d = world.world_2d
-	for vp in [world, smooth, front]:
+	colors.world_2d = world.world_2d
+	# Added before the smooth layer, so its colours are drawn first each frame
+	for vp in [world, colors, smooth, front]:
 		add_child(vp)
 	for vp in [world, smooth, front]:
 		var view := TextureRect.new()
@@ -57,6 +66,7 @@ static func go(tree: SceneTree, path: String) -> void:
 func set_zoom(zoom: float) -> void:
 	world.size = (Vector2(BASE_SIZE) / zoom).round()
 	front.size = world.size
+	colors.size = world.size + Vector2i.ONE * 2 * COLOR_MARGIN
 
 # Mouse positions arrive in BASE_SIZE units; scenes get them in game pixels
 func _input(event: InputEvent) -> void:
@@ -81,10 +91,14 @@ func _fit_smooth() -> void:
 
 # The camera only moves the viewport it's in. The front layer copies it, and the
 # smooth layer copies it scaled up, with the camera's offset rounded to a whole
-# game pixel as pixel snapping does in the others
+# game pixel as pixel snapping does in the others. The colour layer copies it
+# too, widened by its margin, and tells the terrain where it is
 func _follow_camera() -> void:
 	var view := world.canvas_transform
 	front.canvas_transform = view
+	var origin := (view.origin + Vector2(0.5, 0.5)).floor()
 	var scale := Vector2(smooth.size) / Vector2(world.size)
-	smooth.canvas_transform = Transform2D(0.0, scale, 0.0,
-		(view.origin + Vector2(0.5, 0.5)).floor() * scale)
+	smooth.canvas_transform = Transform2D(0.0, scale, 0.0, origin * scale)
+	colors.canvas_transform = Transform2D(0.0, origin + Vector2.ONE * COLOR_MARGIN)
+	for canvas in get_tree().get_nodes_in_group("terrain_canvas"):
+		canvas.show_colors(colors.get_texture(), -colors.canvas_transform.origin)

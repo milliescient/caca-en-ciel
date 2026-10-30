@@ -14,6 +14,11 @@ const WHEEL_AIR_DRAG := 0.3
 const MAX_WHEEL_SPEED := 800.0
 const GROUND_DECEL := 400.0
 
+# Shoving soft poop: how much of Totoro's speed into a poop becomes a push, and
+# how hard his weight presses on the poop under him each step
+const SHOVE_MASS := 1.5
+const WEIGHT := 0.75
+
 var facing_right := true
 var emit_timer := 0.0
 var wheel_angular_vel := 0.0
@@ -69,6 +74,8 @@ func _physics_process(delta: float) -> void:
 	if correction.length() > 1.0:
 		global_position = pos_before + expected + correction.normalized() * 1.0
 
+	_shove_poop(vel_before)
+
 	# Spray with Enter
 	if Input.is_action_pressed("shoot"):
 		emit_timer -= delta
@@ -77,6 +84,20 @@ func _physics_process(delta: float) -> void:
 			_emit_particle()
 	else:
 		emit_timer = 0.0
+
+# Push on the poop he ran into and the poop he's standing on. Soft poop gives
+# way, so he ploughs through it and sinks into it
+func _shove_poop(vel: Vector2) -> void:
+	for i in get_slide_collision_count():
+		var hit := get_slide_collision(i)
+		var poop := hit.get_collider()
+		if poop and poop.has_method("shove"):
+			var into := maxf(vel.dot(-hit.get_normal()), 0.0)
+			poop.shove(-hit.get_normal() * into * SHOVE_MASS)
+	if is_on_floor():
+		var below := move_and_collide(Vector2.DOWN * (safe_margin + 1.0), true)
+		if below and below.get_collider().has_method("shove"):
+			below.get_collider().shove(Vector2.DOWN * WEIGHT)
 
 func _emit_particle() -> void:
 	var emit_pos := global_position + Vector2(0, 4)

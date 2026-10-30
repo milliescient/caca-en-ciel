@@ -1,32 +1,70 @@
 class_name TerrainPixel
 extends RigidBody2D
 
-# A piece of rainbow poop. It flies as a 3x3 square cycling through the rainbow
-# until LOCK_TIME, when it stops dead, rotation and all, and becomes terrain.
-# From then it cures over CURE_TIME, fast at first and slowing (cure_progress):
-# its colour fades toward rose gold while the hue cycle slows with the fading
-# saturation, and its shape spreads like a drop flattening on glass
+# A piece of rainbow poop. It leaves Totoro fully uncured and flies as a 3x3
+# square cycling through the rainbow, gravity pulling hard and drag slowing it,
+# until it sticks at STICK_TIME: it stops dead, rotation and all, and becomes
+# terrain, drawn by the terrain canvas.
+#
+# Sticking and curing are separate. Once stuck, a piece spreads like a drop
+# flattening on glass and goes from pixelated to smooth over SET_TIME, then
+# stays smooth for good. Curing goes on all its life and depends on sunlight
+# (terrain_canvas.gd): in shade a piece cures, in sun it uncures. Curedness sets
+# its colour, which fades toward rose gold, and its hue cycling, which slows
+# with the saturation. The less cured a stuck piece is, the softer: it oozes
+# down and slides off what it rests on, a pixel at a time and never falling
+# freely, takes more of a push from flying poop and wobbles in shape
 
-const LOCK_TIME := 0.5
-const CURE_TIME := 12.0
-# How far the cure fades toward rose gold; below 1.0 keeps a hint of the rainbow
+const STICK_TIME := 0.5
+const SET_TIME := 12.0
+# How far a cured piece fades toward rose gold; below 1.0 keeps a hint of the
+# rainbow
 const CURE_FADE := 0.85
-# Rainbow steps per second at full colour. It slows with the saturation, so a
-# cured piece keeps cycling at 1 - CURE_FADE of it
+# Rainbow steps per second, uncured. It slows with the saturation, so a cured
+# piece cycles at 1 - CURE_FADE of it
 const HUE_SPEED := 18.0
-# Cured pieces keep the same small share of their response to pushes
-const CURED_RESPONSE := 1.0 - CURE_FADE
-# Fastest a nudged piece may drift: the response to the fastest spray (player.gd
-# sprays at up to 144 px/s)
-const CURED_MAX_SPEED := 144.0 * CURED_RESPONSE
+# In shade a piece cures at CURE_RATE times what it has left to cure, per
+# second. In full sun it uncures at UNCURE_RATE times its curedness, much more
+# slowly. Partial sun mixes the two, so curedness heads for a level of its own
+# at each exposure. Light holds curing back steeply, by (1 - exposure) to the
+# CURE_SHADE_POWER, so even half light keeps a piece fairly soft
+const CURE_RATE := 0.25
+const UNCURE_RATE := 0.025
+const CURE_SHADE_POWER := 4.0
+# Share of the light each pixel of poop stops
+const ABSORBANCE := 0.1
+const EXPOSURE_STEP := 0.05  # change in exposure worth repainting for
+# A wholly uncured stuck piece oozes OOZE_SPEED pixels a second, softer ones
+# in proportion, cured ones not at all. It moves on the canvas's pixel grid
+# rather than as a physics body, which keeps hundreds of oozing pieces cheap
+const OOZE_SPEED := 3.0
+const SOFT_MIN := 0.01  # softness below which a piece is left alone
+# The canvas brings each soft stuck piece up to date STUCK_TICKS times a second
+const STUCK_TICKS := 2.0
+const STUCK_DAMP := 3.0  # drag on a stuck piece pushed by flying poop
+# Share of a push from flying poop a stuck piece takes, cured to uncured, and
+# the fastest it may go: its share of the fastest spray (player.gd sprays at up
+# to 144 px/s)
+const RESPONSE := Vector2(0.15, 0.4)
+const MAX_PUSH_SPEED := 144.0
+# Totoro can shove a piece that touches at most LOOSE_TOUCHING others; each
+# more cuts how much it gives by CLUMP_REDUCTION of what's left. A piece softer
+# than SHOVE_SOFTNESS also gives the more the softer it is, however clumped
+const LOOSE_TOUCHING := 1
+const CLUMP_REDUCTION := 0.25
+const SHOVE_SOFTNESS := 0.5
 # The shape spreads from the 3x3 square in the middle of this grid into an
 # amorphous blob of SPREAD_PIXELS pixels. Each shape change grows the blob by a
 # pixel or moves one around its rim
 const SHAPE_GRID := 9
 const SPREAD_PIXELS := Vector2i(14, 22)
-const SPREAD_RATE := 3.5  # shape changes per second just after locking
-const MOVING_DRIFT_RATE := 2.0  # shape changes per second while nudged
-# Spreading doesn't depend on the world, so the first pieces to lock each work
+const SPREAD_RATE := 3.5  # shape changes per second just after sticking
+const MOVING_DRIFT_RATE := 2.0  # shape changes per second while pushed
+const WOBBLE_RATE := 0.75  # shape changes per second once set, wholly uncured
+const OOZE_WAIT := 2.0  # pixels' worth of oozing to wait after finding no way down
+# Average life of a pixel in full sun; light let through to it counts in part
+const EVAPORATE_TIME := 60.0
+# Spreading doesn't depend on the world, so the first pieces to stick each work
 # one out and later pieces replay one of them, turned or flipped
 const SPREAD_LIBRARY_SIZE := 64
 const NEIGHBOURS := [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]
@@ -51,24 +89,38 @@ const RAINBOW := [
 
 var age := 0.0
 var rainbow_phase := 0.0
-var locked := false
+var stuck := false
 var base_mass := 0.0
+var ooze_due := 0.0
+var last_tick := 0.0
 var prev_velocity := Vector2.ZERO
 var shape_image: Image
 var shape_texture: ImageTexture
 var shape_pixels := {}  # filled pixels of shape_image
 var spread_to := 0
 var shape_changes_due := 0.0
-var spread_ops := []  # [cure age, pixel, filled], replayed by the canvas
+var spread_ops := []  # [age since sticking, pixel, filled], replayed by the canvas
 var spread_turn := 0
-var spread_live := false  # nudged off its replay, or no canvas: spreads itself
-# The cure, from the moment of locking
-var lock_time := 0.0
-var lock_phase := 0.0
+var spread_live := false  # no canvas to replay it: spreads itself
+var spread_done := false
+var stick_time := 0.0
 var shade := 0.0  # slight per-piece variation
-# While resting, the piece is drawn by the terrain canvas instead of its sprite
+# Curedness since the exposure last changed: it heads from cure0 toward the
+# level for this exposure (see curedness), and the hue from phase0
+var since := 0.0
+var cure0 := 0.0
+var exposure := 0.0
+var phase0 := 0.0
+var max_speed := MAX_PUSH_SPEED * RESPONSE.y
+# What the canvas stores for each of this piece's pixels, for its shader to
+# work out smoothness (a) and colour (b) from, as smoothness() and color() do
+var stamp_a := Color()
+var stamp_b := Color()
 var grid_pos := Vector2i.ZERO
 var canvas: TerrainCanvas = null
+# The pixels the collision box covers: within box_half of box_center
+var box_center := Vector2i(SHAPE_GRID / 2, SHAPE_GRID / 2)
+var box_half := 1
 
 static var spread_library := []
 
@@ -79,23 +131,35 @@ static var spread_library := []
 static func clock() -> float:
 	return float(Engine.get_physics_frames()) / Engine.physics_ticks_per_second
 
-# How far along the cure is at this cure age, 0 to 1: fast at first, then easing
-static func cure_progress(cure_age: float) -> float:
-	var x := minf(cure_age / CURE_TIME, 1.0)
+# How far a stuck piece has set, 0 to 1 over SET_TIME: fast at first, then easing
+static func set_progress(stuck_age: float) -> float:
+	var x := minf(stuck_age / SET_TIME, 1.0)
 	return 1.0 - (1.0 - x) * (1.0 - x)
 
-# Colour at this cure age. The hue advances at HUE_SPEED * (1 - CURE_FADE *
-# cure_progress), integrated here in closed form; terrain_canvas.gd's shader
-# does the same sum on the GPU for pieces at rest
-static func cured_color(phase: float, cure_age: float, piece_shade: float) -> Color:
-	var x := minf(cure_age / CURE_TIME, 1.0)
-	phase += HUE_SPEED * (cure_age - CURE_FADE * CURE_TIME * (x * x - x * x * x / 3.0) \
-		- CURE_FADE * maxf(cure_age - CURE_TIME, 0.0))
-	var progress := cure_progress(cure_age)
-	var c: Color = RAINBOW[posmod(floori(phase), RAINBOW.size())].lerp(ROSE_GOLD, CURE_FADE * progress)
+# How fast curedness changes at this exposure, and the level it heads for
+static func cure_rates(sun: float) -> Vector2:
+	var cure := CURE_RATE * pow(1.0 - sun, CURE_SHADE_POWER)
+	var rate := cure + UNCURE_RATE * sun
+	return Vector2(rate, cure / rate)
+
+static func color_at(phase: float, cure: float, piece_shade: float) -> Color:
+	var c: Color = RAINBOW[posmod(floori(phase), RAINBOW.size())].lerp(ROSE_GOLD, CURE_FADE * cure)
 	c += Color(piece_shade, piece_shade * 0.7, piece_shade * 0.6, 0.0)
-	c.a = 0.8 + 0.2 * progress
+	c.a = 0.8 + 0.2 * cure
 	return c
+
+# Curedness at time t, 0 to 1
+func curedness(t: float) -> float:
+	var r := cure_rates(exposure)
+	return r.y + (cure0 - r.y) * exp(-r.x * (t - since))
+
+# The hue advances at HUE_SPEED * (1 - CURE_FADE * curedness), summed here in
+# closed form; terrain_canvas.gd's shader does the same on the GPU
+func hue_phase(t: float) -> float:
+	var r := cure_rates(exposure)
+	var dt := t - since
+	return phase0 + HUE_SPEED * (dt * (1.0 - CURE_FADE * r.y) \
+		- CURE_FADE * (cure0 - r.y) * (1.0 - exp(-r.x * dt)) / r.x)
 
 func _ready() -> void:
 	rainbow_phase = randf() * RAINBOW.size()
@@ -108,49 +172,54 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 
 	if has_meta("pre_solidify"):
-		_lock.call_deferred()
+		_stick.call_deferred()
 		return
 
 	# Collide with terrain + other particles from the start
 	collision_layer = 4
 	collision_mask = 6
 
+# Stuck pieces only run this while pushed, or with no canvas to tick them
 func _physics_process(delta: float) -> void:
-	if locked:
-		_cure_shape()
+	if stuck:
+		_follow()
+		_shape_tick(delta, curedness(clock()))
 		return
 
 	age += delta
 	rainbow_phase += delta * HUE_SPEED
 	sprite.modulate = RAINBOW[int(rainbow_phase) % RAINBOW.size()]
 	sprite.modulate.a = 0.8
-	if age > LOCK_TIME:
-		_lock()
+	if age > STICK_TIME:
+		_stick()
 	prev_velocity = linear_velocity
 
-# Stop dead and become terrain. Locked pieces float free of gravity and barely
-# answer to anything else: a heavier body takes the same push with a fraction
-# of the acceleration. They rest frozen, which keeps a big pile cheap, and wake
-# only when hit (see nudge). They pass through each other: a piece woken inside
-# a packed pile would otherwise be shoved out through whatever is around it
-func _lock() -> void:
-	locked = true
+# Stop dead and become terrain. Stuck pieces rest frozen, which keeps a big pile
+# cheap, oozing on the canvas's grid (see _ooze) until hit by flying poop (see
+# nudge). While pushed they collide with each other and the world
+func _stick() -> void:
+	stuck = true
 	linear_velocity = Vector2.ZERO
 	angular_velocity = 0.0
 	lock_rotation = true
 	gravity_scale = 0.0
+	linear_damp = STUCK_DAMP
 	collision_layer = 2
-	collision_mask = 0
-	mass = base_mass / CURED_RESPONSE
+	collision_mask = 2
 	freeze = true
-	lock_time = clock()
-	lock_phase = fmod(rainbow_phase, RAINBOW.size())
+	continuous_cd = RigidBody2D.CCD_MODE_DISABLED
+	contact_monitor = false
+	stick_time = clock()
+	since = stick_time
+	last_tick = stick_time
+	phase0 = fmod(rainbow_phase, RAINBOW.size())
 	shade = randf_range(-0.02, 0.02)
+	_update_stamp()
 	_settle()
 	if canvas == null:
 		spread_live = true
 		return
-	# Hand the spread to the canvas to replay, so a locked piece costs nothing
+	# Hand the spread to the canvas to replay, so a stuck piece costs nothing
 	# per frame until its next pixel is due
 	if spread_library.size() < SPREAD_LIBRARY_SIZE:
 		spread_library.append(_work_out_spread())
@@ -161,27 +230,91 @@ func _lock() -> void:
 	canvas.schedule_spread(self, spread_ops)
 	set_physics_process(false)
 
-# A piece still in flight passes its momentum to any locked piece it hits
+func _update_stamp() -> void:
+	stamp_a = Color(stick_time, shade, 0.0, 1.0)
+	stamp_b = Color(since, phase0, cure0, exposure)
+
+# A piece still in flight passes its momentum to any stuck piece it hits
 func _on_body_entered(body: Node) -> void:
-	if not locked and body.has_method("nudge"):
+	if not stuck and body.has_method("nudge"):
 		body.nudge(prev_velocity * mass)
 
 func nudge(impulse: Vector2) -> void:
-	if locked:
-		_wake.call_deferred(impulse)
+	if stuck:
+		_push.call_deferred(impulse)
 
-func _wake(impulse: Vector2) -> void:
-	spread_live = true
-	if canvas:
-		canvas.remove_piece(self)
-		canvas = null
-		shape_texture.update(shape_image)
-		sprite.visible = true
-	sprite.modulate = cured_color(lock_phase, clock() - lock_time, shade)
+# Totoro pushing on a stuck piece. A loose one gives way, a clumped one holds
+# unless it's soft
+func shove(impulse: Vector2) -> void:
+	if not stuck:
+		return
+	var touching := canvas.touching(self) if canvas else 0
+	var loose := pow(1.0 - CLUMP_REDUCTION, maxi(touching - LOOSE_TOUCHING, 0))
+	var soft := inverse_lerp(SHOVE_SOFTNESS, 1.0, 1.0 - curedness(clock()))
+	var give := clampf(maxf(loose, soft), 0.0, 1.0)
+	if give > 0.01:
+		nudge(impulse * give)
+
+# The softer the piece, the more of the push it takes
+func _push(impulse: Vector2) -> void:
+	var response := lerpf(RESPONSE.y, RESPONSE.x, curedness(clock()))
+	mass = base_mass / response
+	max_speed = MAX_PUSH_SPEED * response
 	freeze = false
 	set_physics_process(true)
-	sprite.position = Vector2.ZERO
 	apply_central_impulse(impulse)
+
+# Called by the canvas a few times a second while the piece is lit or curing,
+# with how much sunlight reaches it, 0 to 1. Returns whether that's still so
+func tick(light: float) -> bool:
+	var now := clock()
+	var delta := now - last_tick
+	last_tick = now
+	if absf(light - exposure) >= EXPOSURE_STEP or (light == 0.0 and exposure > 0.0):
+		phase0 = fposmod(hue_phase(now), RAINBOW.size())
+		cure0 = curedness(now)
+		since = now
+		exposure = light
+		_update_stamp()
+		if canvas:
+			canvas.restamp(self)
+	var cure := curedness(now)
+	if freeze:
+		_ooze(delta, 1.0 - cure)
+		_shape_tick(delta, cure)
+	return cure < 1.0 - SOFT_MIN or exposure > 0.0
+
+# Creep down a pixel at a time as soft as the piece is, sliding off to either
+# side when straight down is taken
+func _ooze(delta: float, softness: float) -> void:
+	if not freeze or canvas == null:
+		return
+	ooze_due += delta * OOZE_SPEED * softness
+	while ooze_due >= 1.0:
+		ooze_due -= 1.0
+		var side := Vector2i(1 if randf() < 0.5 else -1, 1)
+		if not (_ooze_to(Vector2i.DOWN) or _ooze_to(side) or _ooze_to(Vector2i(-side.x, 1))):
+			ooze_due = -OOZE_WAIT
+
+# The canvas knows every stuck piece's pixels exactly, so it alone says what's
+# in the way. (Collision boxes are only a rough core of each piece.)
+func _ooze_to(step: Vector2i) -> bool:
+	if canvas.blocked(self, step):
+		return false
+	global_position += Vector2(step)
+	canvas.move_piece(self, grid_pos + step)
+	return true
+
+# Keep the canvas drawing the piece where it is, to the whole pixel
+func _follow() -> void:
+	if freeze or canvas == null:
+		return
+	var at := _grid_at()
+	if at != grid_pos:
+		canvas.move_piece(self, at)
+
+func _grid_at() -> Vector2i:
+	return Vector2i((global_position - sprite.texture.get_size() * 0.5).round())
 
 func _make_shape() -> void:
 	shape_image = Image.create(SHAPE_GRID, SHAPE_GRID, false, Image.FORMAT_RGBA8)
@@ -195,35 +328,62 @@ func _make_shape() -> void:
 
 # Called by the canvas when spread_ops[i] is due
 func replay_spread(i: int) -> void:
-	if not spread_live:
-		_set_shape_pixel(_turn(spread_ops[i][1]), spread_ops[i][2])
+	_set_shape_pixel(_turn(spread_ops[i][1]), spread_ops[i][2])
 
-# A piece curing by itself, off the canvas's replay: fluid while nudged, then
-# spreading on to set
-func _cure_shape() -> void:
-	var delta := get_physics_process_delta_time()
-	var cure_age := clock() - lock_time
+# Shape changes a stuck piece makes itself: spreading when there's no canvas to
+# replay it, drifting while pushed, and once set, wobbling as soft as it is
+func _shape_tick(delta: float, cure: float) -> void:
+	var now := clock()
 	var ops := []
 	if canvas == null:
-		sprite.modulate = cured_color(lock_phase, cure_age, shade)
-	if not freeze:
-		shape_changes_due += delta * MOVING_DRIFT_RATE
+		sprite.modulate = color_at(hue_phase(now), cure, shade)
+	if not _shape_settled():
+		if spread_live and now - stick_time < SET_TIME:
+			var step := _spread_step(shape_pixels, now - stick_time, delta, spread_to, shape_changes_due)
+			ops = step[0]
+			shape_changes_due = step[1]
+		elif spread_live:
+			while _is_rectangle(shape_pixels):
+				ops.append_array(_drift(shape_pixels))
+			spread_done = true
+	else:
+		var softness := 1.0 - cure
+		var rate := WOBBLE_RATE * softness
+		if not freeze and linear_velocity.length() > MAX_PUSH_SPEED * RESPONSE.x * 0.25:
+			rate = MOVING_DRIFT_RATE
+		shape_changes_due += delta * rate
 		while shape_changes_due >= 1.0:
 			shape_changes_due -= 1.0
 			ops.append_array(_drift(shape_pixels))
-	elif cure_age < CURE_TIME:
-		var step := _spread_step(shape_pixels, cure_age, delta, spread_to, shape_changes_due)
-		ops = step[0]
-		shape_changes_due = step[1]
-	else:
-		while _is_rectangle(shape_pixels):
-			ops.append_array(_drift(shape_pixels))
-		if canvas:
-			set_physics_process(false)
+		if freeze and canvas:
+			set_physics_process(false)  # the canvas ticks it from here
 	for op in ops:
 		_set_shape_pixel(op[0], op[1])
-	if not ops.is_empty() and canvas == null:
-		shape_texture.update(shape_image)
+
+# Whether the shape has finished spreading, so it may wobble or evaporate. A
+# replayed spread is done once its last change is due
+func _shape_settled() -> bool:
+	if not spread_done and not spread_live and clock() >= stick_time + SET_TIME + 0.1:
+		spread_done = true
+	return spread_done
+
+# Called by the canvas: sunlight takes this pixel away. A pixel holding the
+# shape together stays for now
+func evaporate(px: Vector2i) -> void:
+	if not _shape_settled() or not shape_pixels.has(px):
+		return
+	if shape_pixels.size() == 1:
+		canvas.remove_piece(self)
+		queue_free()
+	elif _stays_connected_without(shape_pixels, px):
+		_set_shape_pixel(px, false)
+
+# How many columns the shape covers
+func width() -> int:
+	var xs := {}
+	for px in shape_pixels:
+		xs[px.x] = true
+	return xs.size()
 
 # Rotate or flip a pixel about the middle of the grid
 func _turn(px: Vector2i) -> Vector2i:
@@ -242,9 +402,42 @@ func _set_shape_pixel(px: Vector2i, filled: bool) -> void:
 		shape_pixels[px] = true
 	else:
 		shape_pixels.erase(px)
+		if maxi(absi(px.x - box_center.x), absi(px.y - box_center.y)) <= box_half:
+			_fit_box()
 	shape_image.set_pixelv(px, BLOB_COLOR if filled else Color(0, 0, 0, 0))
 	if canvas:
 		canvas.update_pixel(self, px)
+	else:
+		shape_texture.update(shape_image)
+
+# Keep the collision box over pixels the piece still has: the solid 3x3 square
+# nearest the middle, or failing that a single pixel. Otherwise a piece whose
+# middle has evaporated or drifted away leaves an invisible box behind
+func _fit_box() -> void:
+	var mid := Vector2i(SHAPE_GRID / 2, SHAPE_GRID / 2)
+	var best := Vector2i(-1, -1)
+	var best_half := -1
+	var best_dist := INF
+	for px in shape_pixels:
+		var half := 1
+		for d in [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0),
+				Vector2i(1, 0), Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1)]:
+			if not shape_pixels.has(px + d):
+				half = 0
+				break
+		var dist := Vector2(px - mid).length_squared()
+		if half > best_half or (half == best_half and dist < best_dist):
+			best = px
+			best_half = half
+			best_dist = dist
+	if best_half < 0:
+		return
+	box_center = best
+	box_half = best_half
+	var box := RectangleShape2D.new()
+	box.size = Vector2.ONE * (2 * box_half + 1)
+	col.shape = box
+	col.position = Vector2(box_center - mid)
 
 # Run a spread from the 3x3 square to set, as a list of pixel changes
 static func _work_out_spread() -> Array:
@@ -258,7 +451,7 @@ static func _work_out_spread() -> Array:
 	var age := 0.0
 	var step := 1.0 / 60.0
 	var due := 0.0
-	while age < CURE_TIME:
+	while age < SET_TIME:
 		age += step
 		var result := _spread_step(pixels, age, step, spread_to, due)
 		due = result[1]
@@ -269,13 +462,13 @@ static func _work_out_spread() -> Array:
 			ops.append([age, op[0], op[1]])
 	return ops
 
-# One tick of spreading at this cure age, returning [pixel changes, changes
-# still owed]. Changes come at a rate that slows to nothing as the shape sets,
+# One tick of spreading at this age since sticking, returning [pixel changes,
+# changes still owed]. Changes come at a rate that slows to nothing as the shape sets,
 # and grow it while it's smaller than it should be by now
 static func _spread_step(pixels: Dictionary, age: float, delta: float, spread_to: int, owed: float) -> Array:
-	var t := minf(age / CURE_TIME, 1.0)
+	var t := minf(age / SET_TIME, 1.0)
 	owed += delta * SPREAD_RATE * (1.0 - t)
-	var grow := pixels.size() < lerpf(9.0, spread_to, cure_progress(age))
+	var grow := pixels.size() < lerpf(9.0, spread_to, set_progress(age))
 	var ops := []
 	while owed >= 1.0:
 		owed -= 1.0
@@ -295,7 +488,7 @@ static func _grow(pixels: Dictionary) -> Array:
 # keeps the blob rounded like a drop rather than stringy
 static func _drift(pixels: Dictionary) -> Array:
 	var candidates := pixels.keys()
-	for tries in 4:
+	for tries in mini(4, candidates.size()):
 		var px := _pick_loose(pixels, candidates)
 		if _stays_connected_without(pixels, px):
 			pixels.erase(px)
@@ -373,35 +566,24 @@ static func _is_rectangle(pixels: Dictionary) -> bool:
 	return box.get_area() == pixels.size()
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
-	if locked:
-		state.linear_velocity = state.linear_velocity.limit_length(CURED_MAX_SPEED)
+	if stuck:
+		state.linear_velocity = state.linear_velocity.limit_length(max_speed)
 
-# A nudged piece freezes again once it comes to rest. Physics won't take the
-# freeze mid-step, and a nudge may land first and lift the piece off the canvas
+# A pushed piece freezes again once it comes to rest. Physics won't take the
+# freeze mid-step
 func _on_sleeping_state_changed() -> void:
-	if locked and sleeping and not freeze:
-		_settle()
-		_freeze_if_resting.call_deferred()
+	if stuck and sleeping and not freeze:
+		set_deferred("freeze", true)
 
-func _freeze_if_resting() -> void:
-	if canvas:
-		freeze = true
-
-# Draw the resting piece upright on the world pixel grid, so every gap between
+# Draw the stuck piece upright on the world pixel grid, so every gap between
 # pieces is a whole number of pixels and stays put as the camera moves. It goes
 # into the shared terrain canvas, so thousands of pieces cost a few draws
 func _settle() -> void:
-	var half := sprite.texture.get_size() * 0.5
-	grid_pos = Vector2i((global_position - half).round())
+	grid_pos = _grid_at()
 	canvas = get_tree().get_first_node_in_group("terrain_canvas")
 	if canvas == null:
 		sprite.global_rotation = 0.0
-		sprite.global_position = Vector2(grid_pos) + half
+		sprite.global_position = Vector2(grid_pos) + sprite.texture.get_size() * 0.5
 		return
 	canvas.add_piece(self)
 	sprite.visible = false
-
-# What the canvas stores for each of this piece's pixels, for its shader to
-# work the colour out from
-func stamp() -> Color:
-	return Color(lock_time, lock_phase, shade, 1.0)
